@@ -1,49 +1,61 @@
-// 定義 API 網址 (股利分派)
-const API_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
-let rawData = []; // 用於存放原始數據以供搜尋篩選
+// 使用 allorigins 代理伺服器來繞過 CORS 限制
+const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
+const PROXY_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
 
-// 取得 DOM 元素
+let rawData = []; 
+
 const fetchBtn = document.getElementById('fetchBtn');
 const searchInput = document.getElementById('searchInput');
 const dataBody = document.getElementById('dataBody');
 const loader = document.getElementById('loading');
 
-// 抓取資料的函式
 async function loadData() {
     try {
+        // 顯示載入中動畫
         loader.classList.remove('d-none');
         dataBody.innerHTML = "";
         
-        const response = await fetch(API_URL);
-        if (!response.ok) throw new Error("網路請求失敗");
+        const response = await fetch(PROXY_URL);
+        if (!response.ok) throw new Error("代理伺服器連線失敗");
         
-        rawData = await response.json();
-        renderTable(rawData.slice(0, 100)); // 預設顯示前100筆
+        const wrapper = await response.json();
+        
+        // 重要：allorigins 回傳的是物件，真正的 API 資料在 .contents 裡 (且是字串)
+        if (wrapper.contents) {
+            rawData = JSON.parse(wrapper.contents);
+            renderTable(rawData.slice(0, 100)); 
+        } else {
+            throw new Error("找不到有效的資料內容");
+        }
         
     } catch (error) {
-        console.error("發生錯誤:", error);
-        alert("無法讀取證交所資料，請稍後再試。");
+        console.error("詳細錯誤資訊:", error);
+        dataBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">讀取失敗：${error.message}<br>請確認網路連線或稍後再試。</td></tr>`;
     } finally {
         loader.classList.add('d-none');
     }
 }
 
-// 渲染表格的函式
 function renderTable(data) {
+    if (!data || data.length === 0) {
+        dataBody.innerHTML = `<tr><td colspan="5" class="text-center">查無資料</td></tr>`;
+        return;
+    }
+
     dataBody.innerHTML = data.map(item => `
         <tr>
             <td><span class="badge bg-secondary">${item["公司代號"]}</span></td>
             <td><strong>${item["公司名稱"]}</strong></td>
             <td>${item["股利年度"] || '-'}</td>
             <td class="text-success">${item["股東配發-盈餘分配之現金股利(元/股)"] || 0} 元</td>
-            <td><small class="text-muted">需介接資安API</small></td>
+            <td><small class="text-muted">${item["出表日期"] || '-'}</small></td>
         </tr>
     `).join('');
 }
 
-// 搜尋過濾功能
+// 搜尋功能
 searchInput.addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
+    const term = e.target.value.trim().toLowerCase();
     const filtered = rawData.filter(item => 
         item["公司名稱"].includes(term) || 
         item["公司代號"].includes(term)
@@ -51,8 +63,7 @@ searchInput.addEventListener('input', (e) => {
     renderTable(filtered.slice(0, 100));
 });
 
-// 綁定按鈕點擊事件
 fetchBtn.addEventListener('click', loadData);
 
-// 初始化加載
+// 網頁開啟時自動抓取一次
 window.addEventListener('DOMContentLoaded', loadData);
