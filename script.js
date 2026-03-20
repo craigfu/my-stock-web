@@ -1,93 +1,107 @@
-// 使用 allorigins 代理伺服器來繞過 CORS 限制
-// const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
-// const PROXY_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
+/**
+ * 台灣證交所 OpenAPI 股利分派查詢邏輯
+ * 使用 corsproxy.io 繞過瀏覽器 CORS 限制
+ */
 
-let rawData = []; 
+const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
+const PROXY_URL = `https://corsproxy.io/?${encodeURIComponent(TARGET_URL)}`;
 
+let rawData = []; // 儲存原始資料供搜尋使用
+
+// 取得 HTML 元素
 const fetchBtn = document.getElementById('fetchBtn');
 const searchInput = document.getElementById('searchInput');
 const dataBody = document.getElementById('dataBody');
 const loader = document.getElementById('loading');
 
-// 更換為另一個代理服務
-const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
-const PROXY_URL = `https://corsproxy.io/?${encodeURIComponent(TARGET_URL)}`;
-
+/**
+ * 從 API 抓取資料
+ */
 async function loadData() {
     try {
+        // 1. 顯示載入狀態
         loader.classList.remove('d-none');
         dataBody.innerHTML = "";
         
+        // 2. 發送請求
         const response = await fetch(PROXY_URL);
-        if (!response.ok) throw new Error("代理伺服器連線失敗");
         
-        // 注意：corsproxy.io 會直接回傳原始 API 的 JSON
-        // 所以這裡不需要 JSON.parse(result.contents)，直接取用即可！
+        if (!response.ok) {
+            throw new Error(`伺服器回應錯誤: ${response.status}`);
+        }
+        
+        // 3. 解析 JSON (corsproxy 會直接回傳原始格式)
         rawData = await response.json();
-        renderTable(rawData.slice(0, 100)); 
+        
+        // 4. 渲染表格 (預設顯示前 100 筆)
+        renderTable(rawData.slice(0, 100));
         
     } catch (error) {
-        console.error("詳細錯誤資訊:", error);
-        dataBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">讀取失敗：${error.message}</td></tr>`;
+        console.error("Fetch Error:", error);
+        dataBody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center text-danger">
+                    <strong>資料讀取失敗</strong><br>
+                    原因：${error.message}<br>
+                    <small>請嘗試重新整理網頁，或稍後再試。</small>
+                </td>
+            </tr>`;
     } finally {
+        // 5. 隱藏載入狀態
         loader.classList.add('d-none');
     }
 }
-// async function loadData() {
-    // try {
-        顯示載入中動畫
-        // loader.classList.remove('d-none');
-        // dataBody.innerHTML = "";
-        
-        // const response = await fetch(PROXY_URL);
-        // if (!response.ok) throw new Error("代理伺服器連線失敗");
-        
-        // const wrapper = await response.json();
-        
-        重要：allorigins 回傳的是物件，真正的 API 資料在 .contents 裡 (且是字串)
-        // if (wrapper.contents) {
-            // rawData = JSON.parse(wrapper.contents);
-            // renderTable(rawData.slice(0, 100)); 
-        // } else {
-            // throw new Error("找不到有效的資料內容");
-        // }
-        
-    // } catch (error) {
-        // console.error("詳細錯誤資訊:", error);
-        // dataBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">讀取失敗：${error.message}<br>請確認網路連線或稍後再試。</td></tr>`;
-    // } finally {
-        // loader.classList.add('d-none');
-    // }
-// }
 
+/**
+ * 將資料渲染到 HTML 表格中
+ * @param {Array} data - 要顯示的資料陣列
+ */
 function renderTable(data) {
     if (!data || data.length === 0) {
-        dataBody.innerHTML = `<tr><td colspan="5" class="text-center">查無資料</td></tr>`;
+        dataBody.innerHTML = `<tr><td colspan="5" class="text-center">查無相符資料</td></tr>`;
         return;
     }
 
-    dataBody.innerHTML = data.map(item => `
-        <tr>
-            <td><span class="badge bg-secondary">${item["公司代號"]}</span></td>
-            <td><strong>${item["公司名稱"]}</strong></td>
-            <td>${item["股利年度"] || '-'}</td>
-            <td class="text-success">${item["股東配發-盈餘分配之現金股利(元/股)"] || 0} 元</td>
-            <td><small class="text-muted">${item["出表日期"] || '-'}</small></td>
-        </tr>
-    `).join('');
+    const htmlRows = data.map(item => {
+        // 處理可能的空值
+        const code = item["公司代號"] || "N/A";
+        const name = item["公司名稱"] || "未知";
+        const year = item["股利年度"] || "-";
+        const dividend = item["股東配發-盈餘分配之現金股利(元/股)"] || "0";
+        const date = item["出表日期"] || "-";
+
+        return `
+            <tr>
+                <td><span class="badge bg-secondary">${code}</span></td>
+                <td><strong>${name}</strong></td>
+                <td>${year}</td>
+                <td class="text-success fw-bold">${dividend} 元</td>
+                <td><small class="text-muted">${date}</small></td>
+            </tr>
+        `;
+    }).join('');
+
+    dataBody.innerHTML = htmlRows;
 }
 
-// 搜尋功能
+/**
+ * 搜尋過濾邏輯
+ */
 searchInput.addEventListener('input', (e) => {
     const term = e.target.value.trim().toLowerCase();
+    
+    // 篩選名稱或代號包含關鍵字的資料
     const filtered = rawData.filter(item => 
-        item["公司名稱"].includes(term) || 
-        item["公司代號"].includes(term)
+        (item["公司名稱"] && item["公司名稱"].includes(term)) || 
+        (item["公司代號"] && item["公司代號"].includes(term))
     );
+    
+    // 顯示篩選結果 (限制 100 筆確保效能)
     renderTable(filtered.slice(0, 100));
 });
 
+// 綁定按鈕手動更新
 fetchBtn.addEventListener('click', loadData);
 
-// 網頁開啟時自動抓取一次
-window.addEventListener('DOMContentLoaded', loadData);
+// 頁面載入完成後自動執行一次
+document.addEventListener('DOMContentLoaded', loadData);
