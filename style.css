@@ -1,0 +1,19 @@
+body {
+    background-color: #f0f2f5;
+    font-family: "Microsoft JhengHei", sans-serif;
+}
+
+.card {
+    border: none;
+    border-radius: 12px;
+}
+
+.table th {
+    font-weight: 600;
+}
+
+/* 讓搜尋框與按鈕對齊感更好 */
+#searchInput:focus {
+    box-shadow: 0 0 0 0.25 margin rgba(25, 135, 84, 0.25);
+    border-color: #198754;
+}
