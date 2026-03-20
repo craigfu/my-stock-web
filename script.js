@@ -1,4 +1,5 @@
-const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
+//const TARGET_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap45_L";
+const TARGET_URL = "https://openapi.twse.com.tw/v1/exchangeReport/MI_5MINS_ASKBID";
 const PROXY_URL = `https://corsproxy.io/?${encodeURIComponent(TARGET_URL)}`;
 
 let rawData = []; 
