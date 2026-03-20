@@ -1,64 +1,81 @@
-// 改用另一個穩定且支援較小資料量的代理
-const TARGET_URL = "https://openapi.twse.com.tw/v1/exchangeReport/MI_5MINS_ASKBID";
-const PROXY_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(TARGET_URL)}`;
+// 請在此填入你的氣象署 API Key
+const API_KEY = "CWA-6ED90C4C-3A6E-4B00-AB69-66F6E8EA5F09"; 
+const API_URL = `https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=${API_KEY}`;
 
-let rawData = []; 
+let weatherData = [];
 
-const dataBody = document.getElementById('dataBody');
-const loader = document.getElementById('loading');
+const weatherCards = document.getElementById('weatherCards');
 const fetchBtn = document.getElementById('fetchBtn');
+const searchInput = document.getElementById('searchInput');
+const loader = document.getElementById('loading');
 
-async function loadData() {
-    console.log("開始抓取資料 (MI_5MINS 模式)...");
-    
+async function getWeatherData() {
     try {
-        if (!dataBody || !loader) return;
-        
         loader.classList.remove('d-none');
-        dataBody.innerHTML = '<tr><td colspan="5" class="text-center">資料載入中...</td></tr>';
-        
-        const response = await fetch(PROXY_URL);
-        const result = await response.json();
-        
-        // allorigins 的內容在 contents 裡
-        const content = result.contents;
+        weatherCards.innerHTML = '';
 
-        // 檢查回傳內容是否為 HTML (代表被擋了或是錯誤頁面)
-        if (content.trim().startsWith("<!DOCTYPE")) {
-            throw new Error("API 回傳了網頁內容而非數據，可能是被證交所暫時限制存取。");
-        }
+        // 氣象署 API 本身就支援 CORS，所以直接抓取即可！
+        const response = await fetch(API_URL);
+        
+        if (!response.ok) throw new Error("API 金鑰錯誤或連線失敗");
+        
+        const json = await response.json();
+        
+        // 解析氣象署層層巢狀的 JSON 結構
+        weatherData = json.records.location;
+        renderCards(weatherData);
 
-        rawData = JSON.parse(content);
-        console.log("成功抓取！資料型別:", typeof rawData);
-        
-        renderTable(rawData);
-        
     } catch (error) {
-        console.error("抓取失敗:", error);
-        dataBody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">錯誤: ${error.message}</td></tr>`;
+        console.error("錯誤:", error);
+        weatherCards.innerHTML = `
+            <div class="col-12 text-center text-danger">
+                <h3>抓取失敗</h3>
+                <p>${error.message}</p>
+                <p>請檢查 API Key 是否填寫正確。</p>
+            </div>`;
     } finally {
         loader.classList.add('d-none');
     }
 }
 
-function renderTable(data) {
-    if (!data || data.length === 0) {
-        dataBody.innerHTML = `<tr><td colspan="5" class="text-center">目前沒有即時委託資料</td></tr>`;
+function renderCards(locations) {
+    if (!locations.length) {
+        weatherCards.innerHTML = '<p class="text-center w-100">找不到該縣市...</p>';
         return;
     }
 
-    // MI_5MINS 的欄位名稱不同，我們對應一下
-    dataBody.innerHTML = data.map(item => `
-        <tr>
-            <td><span class="badge bg-info">${item["時間"] || '-'}</span></td>
-            <td><strong>累積委託買進筆數</strong></td>
-            <td>${item["累積委託買進筆數"] || '-'}</td>
-            <td class="text-success">${item["累積委託買進數量"] || '-'}</td>
-            <td><small class="text-muted">買賣統計</small></td>
-        </tr>
-    `).join('');
+    weatherCards.innerHTML = locations.map(loc => {
+        // 取得具體天氣資訊 (Wx: 天氣現象, Pop: 降雨機率, MinT: 最低溫, MaxT: 最高溫)
+        const wx = loc.weatherElement[0].time[0].parameter.parameterName;
+        const pop = loc.weatherElement[1].time[0].parameter.parameterName;
+        const minT = loc.weatherElement[2].time[0].parameter.parameterName;
+        const maxT = loc.weatherElement[4].time[0].parameter.parameterName;
+
+        return `
+            <div class="col">
+                <div class="card weather-card h-100 shadow-sm p-3">
+                    <div class="card-body">
+                        <h5 class="card-title fw-bold text-dark">${loc.locationName}</h5>
+                        <p class="card-text text-muted mb-2">${wx}</p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="temp-badge">${minT}°C - ${maxT}°C</span>
+                            <span class="rain-chance">💧 降雨率 ${pop}%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
-// 綁定與初始化
-if (fetchBtn) fetchBtn.addEventListener('click', loadData);
-window.onload = loadData;
+// 搜尋過濾
+searchInput.addEventListener('input', (e) => {
+    const term = e.target.value.trim();
+    const filtered = weatherData.filter(loc => loc.locationName.includes(term));
+    renderCards(filtered);
+});
+
+fetchBtn.addEventListener('click', getWeatherData);
+
+// 初始化載入
+window.onload = getWeatherData;
